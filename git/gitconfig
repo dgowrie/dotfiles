@@ -1,0 +1,30 @@
+[user]
+	email = 1242721+dgowrie@users.noreply.github.com
+	name = David Gowrie
+
+# 1Password snippet to Configure Git Commit Signing
+# https://developer.1password.com/docs/ssh/git-commit-signing/
+
+[user]
+  signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPMCsbeSgA76knItHxHHCs/hyPB1dmt0tgWhFlZKxkte
+
+[gpg]
+  format = ssh
+
+[gpg "ssh"]
+  program = "/Applications/1Password.app/Contents/MacOS/op-ssh-sign"
+
+[commit]
+  gpgsign = true
+
+[alias]
+	freshmain = "!f() { git fetch origin || { echo \"fetch failed\"; return 1; }; git switch main || { echo \"switch failed (unstaged/uncommitted changes?)\"; return 1; }; git pull || { echo \"pull failed\"; return 1; }; }; f"
+	aliases = config --get-regexp ^alias\\.
+	new = "!f() { if [ -z \"$1\" ]; then printf \"Branch suffix: \"; read suffix; else suffix=\"$1\"; fi; git checkout -b \"dgowrie/$suffix\" origin/main; }; f"
+	# lg — compact log viewer
+	#   git lg           one-liner per commit: hash, decorations, subject, author, date
+	#   git lg -b        same + indented message body, blank lines between commits
+	#   -b must be the first arg if used; all other git log args pass through:
+	#     git lg -20, git lg -b --author=foo, git lg -- src/, etc.
+	#   Colors: hash=dim yellow, decorations=auto, subject=default, author+date=dim, body=dim
+	lg = "!f() { if [ \"$1\" = \"-b\" ]; then shift; git log --pretty=format:\"%C(dim yellow)%h%C(reset)%C(auto)%d%C(reset) %s %C(dim)— %an, %ad%C(reset)%n%C(dim)%w(0,4,4)%b%w(0,0,0)%C(reset)\" --date=format:\"%Y-%m-%d %H:%M\" \"$@\"; else git log --pretty=format:\"%C(dim yellow)%h%C(reset)%C(auto)%d%C(reset) %s %C(dim)— %an, %ad%C(reset)\" --date=format:\"%Y-%m-%d %H:%M\" \"$@\"; fi; }; f"

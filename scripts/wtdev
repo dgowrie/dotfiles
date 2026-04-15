@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# wtdev - Start a local dev environment from a git worktree
+#
+# Automates the full startup sequence so you don't have to remember what
+# to check, stop, cd into, or run. Designed for repos that use Docker
+# Compose for infrastructure (Grafana, feature flag servers, etc.) and a
+# JS/TS dev server for the application layer.
+#
+# Usage:
+#   wtdev <worktree-name-or-path>
+#
+# Examples:
+#   wtdev zesty-mixing-rabbit          # resolves under .claude/worktrees/
+#   wtdev .claude/worktrees/my-branch  # relative to repo root
+#   wtdev /absolute/path/to/worktree   # absolute path
+#
+# What it does (in order):
+#   1. Resolves the worktree directory from a name, relative, or absolute path.
+#      Names are looked up under .claude/worktrees/ first (Claude Code convention).
+#   2. Detects project conventions by reading files in the worktree:
+#      - Package manager: yarn.lock / pnpm-lock.yaml / package-lock.json
+#      - Dev command: prefers "dev:msw" over "dev" in package.json scripts
+#      - Grafana version: from plugin.json grafanaDependency, then docker-compose
+#      - Ports: parsed from docker-compose port mappings
+#      - Container names: parsed from docker-compose container_name fields
+#   3. Checks if any required ports are already in use.
+#      - If occupied by known project containers: offers to stop them (prompts Y/n)
+#      - If occupied by something else: exits with instructions to resolve manually
+#      - Searches both the main repo and all worktrees for docker-compose files to stop
+#   4. Installs dependencies if node_modules/ is missing.
+#   5. Starts docker compose (if docker-compose.yaml exists) with --build -d.
+#   6. Waits up to 30s for Grafana health check (if port 3000 is mapped).
+#   7. Runs the dev server (e.g. "yarn dev:msw") in the foreground.
+#      Ctrl+C stops the dev server; containers keep running.
+#
+# Environment variables:
+#   GRAFANA_VERSION  Override the auto-detected Grafana version.
+#                    Default: derived from plugin.json or docker-compose.
+#
+# Requirements:
+#   - Must be run from within a git repository (main repo or any worktree)
+#   - docker, docker compose, node, and the detected package manager must be on PATH
+#
+# Notes:
+#   - The script never modifies your repo or worktree files
+#   - Containers are left running after Ctrl+C; run "docker compose down"
+#     from the worktree to stop them
+#   - Works with any repo, not just Grafana plugins - the convention detection
+#     gracefully skips steps when files aren't present
+
+# --- Resolve repo root ---
+find_repo_root() {
+  local dir="$1"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.git" ]] || [[ -f "$dir/.git" ]]; then
+      # If .git is a file, this is a worktree - follow to the main repo
+      if [[ -f "$dir/.git" ]]; then
+        local gitdir
+        gitdir=$(sed -n 's/^gitdir: //p' "$dir/.git")
+        # gitdir points to .git/worktrees/<name> in the main repo
+        local main_git
+        main_git=$(cd "$dir/$gitdir/../.." && pwd)
+        echo "$main_git"
+      else
+        echo "$dir"
+      fi
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+REPO_ROOT=$(find_repo_root "$(pwd)") || {
+  echo "Error: not inside a git repository"
+  exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: wtdev <worktree-name-or-path>"
+  echo ""
+  echo "Accepts a worktree name, relative path, or absolute path."
+  echo "Names are resolved under .claude/worktrees/ first, then as paths relative to repo root."
+  exit 1
+fi
+
+target="$1"
+
+# --- Resolve worktree directory ---
+if [[ -d "$target" ]]; then
+  WORKTREE_DIR="$(cd "$target" && pwd)"
+elif [[ -d "$REPO_ROOT/.claude/worktrees/$target" ]]; then
+  WORKTREE_DIR="$REPO_ROOT/.claude/worktrees/$target"
+elif [[ -d "$REPO_ROOT/$target" ]]; then
+  WORKTREE_DIR="$(cd "$REPO_ROOT/$target" && pwd)"
+else
+  echo "Error: could not resolve worktree '$target'"
+  echo "Searched:"
+  echo "  $target (as path)"
+  echo "  $REPO_ROOT/.claude/worktrees/$target"
+  echo "  $REPO_ROOT/$target"
+  exit 1
+fi
+
+echo "Worktree: $WORKTREE_DIR"
+echo "Repo root: $REPO_ROOT"
+cd "$WORKTREE_DIR"
+
+# --- Detect package manager ---
+detect_pkg_manager() {
+  if [[ -f "yarn.lock" ]]; then echo "yarn"
+  elif [[ -f "pnpm-lock.yaml" ]]; then echo "pnpm"
+  elif [[ -f "package-lock.json" ]]; then echo "npm"
+  else echo "npm"
+  fi
+}
+
+PKG_MANAGER=$(detect_pkg_manager)
+
+# --- Detect dev command ---
+detect_dev_command() {
+  if [[ ! -f package.json ]]; then
+    echo ""
+    return
+  fi
+  # Prefer dev:msw, fall back to dev
+  if node -e "const p=require('./package.json'); process.exit(p.scripts?.['dev:msw'] ? 0 : 1)" 2>/dev/null; then
+    echo "dev:msw"
+  elif node -e "const p=require('./package.json'); process.exit(p.scripts?.['dev'] ? 0 : 1)" 2>/dev/null; then
+    echo "dev"
+  else
+    echo ""
+  fi
+}
+
+DEV_CMD=$(detect_dev_command)
+
+# --- Detect Grafana version ---
+detect_grafana_version() {
+  # Try plugin.json grafanaDependency (e.g. ">=12.3.0" -> "12.3.0")
+  for pj in src/plugin.json plugin.json; do
+    if [[ -f "$pj" ]]; then
+      local ver
+      ver=$(node -e "
+        const p=require('./$pj');
+        const dep=p.dependencies?.grafanaDependency || '';
+        const m=dep.match(/\d+\.\d+\.\d+/);
+        if(m) console.log(m[0]);
+      " 2>/dev/null)
+      if [[ -n "$ver" ]]; then
+        echo "$ver"
+        return
+      fi
+    fi
+  done
+
+  # Try docker-compose base file
+  for dc in .config/docker-compose-base.yaml .config/docker-compose-base.yml; do
+    if [[ -f "$dc" ]]; then
+      local ver
+      ver=$(grep -oP 'grafana_version:-\K[0-9]+\.[0-9]+\.[0-9]+' "$dc" 2>/dev/null || true)
+      if [[ -n "$ver" ]]; then
+        echo "$ver"
+        return
+      fi
+    fi
+  done
+
+  echo ""
+}
+
+# --- Detect ports from docker-compose ---
+detect_ports() {
+  local compose_file=""
+  for f in docker-compose.yaml docker-compose.yml; do
+    [[ -f "$f" ]] && compose_file="$f" && break
+  done
+
+  if [[ -z "$compose_file" ]]; then
+    echo ""
+    return
+  fi
+
+  # Extract host ports from "port:port/proto" or "port:port" patterns
+  grep -oE '[0-9]+:[0-9]+(/tcp|/udp)?' "$compose_file" 2>/dev/null \
+    | sed 's/:.*//' \
+    | sort -u \
+    | tr '\n' ' '
+}
+
+# --- Detect container names from docker-compose ---
+detect_container_names() {
+  # Search top-level compose files and any referenced base/override files
+  local compose_files=()
+  for f in docker-compose.yaml docker-compose.yml .config/docker-compose-base.yaml .config/docker-compose-base.yml; do
+    [[ -f "$f" ]] && compose_files+=("$f")
+  done
+
+  if [[ ${#compose_files[@]} -eq 0 ]]; then
+    echo ""
+    return
+  fi
+
+  sed -n "s/.*container_name:[[:space:]]*['\"\`]*/  /p" "${compose_files[@]}" 2>/dev/null \
+    | sed "s/['\"\`].*//" \
+    | xargs || true
+}
+
+PORTS=$(detect_ports)
+CONTAINER_NAMES=$(detect_container_names)
+GRAFANA_VERSION_DETECTED=$(detect_grafana_version)
+
+if [[ -n "$GRAFANA_VERSION_DETECTED" ]]; then
+  export GRAFANA_VERSION="${GRAFANA_VERSION:-$GRAFANA_VERSION_DETECTED}"
+  echo "Grafana version: $GRAFANA_VERSION"
+fi
+
+# --- Preflight: remove stale containers that would block docker compose up ---
+has_compose=$([ -f docker-compose.yaml ] || [ -f docker-compose.yml ] && echo "true" || echo "false")
+
+if [[ -n "$CONTAINER_NAMES" ]]; then
+  for name in $CONTAINER_NAMES; do
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${name}$"; then
+      echo "Removing stale container: $name"
+      docker rm -f "$name" 2>/dev/null || true
+    fi
+  done
+fi
+
+# --- Preflight: check ports ---
+
+if [[ -n "$PORTS" ]]; then
+  port_conflict=false
+
+  for port in $PORTS; do
+    if lsof -i :"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      port_conflict=true
+    fi
+  done
+
+  if [[ "$port_conflict" == "true" ]]; then
+    # Check for ANY docker containers on the conflicting ports. Docker Desktop
+    # proxies ports via com.docker, so lsof won't show container names directly.
+    running_on_ports=""
+    for port in $PORTS; do
+      running_on_ports="$running_on_ports $(docker ps --filter "publish=$port" --format '{{.Names}}' 2>/dev/null || true)"
+    done
+    running_on_ports=$(echo "$running_on_ports" | xargs -n1 2>/dev/null | sort -u | xargs 2>/dev/null || true)
+
+    if [[ -n "$running_on_ports" ]]; then
+      echo "Stopping containers on required ports: $running_on_ports"
+      # Try stopping from main repo
+      for f in "$REPO_ROOT/docker-compose.yaml" "$REPO_ROOT/docker-compose.yml"; do
+        [[ -f "$f" ]] && docker compose -f "$f" down 2>/dev/null || true
+      done
+      # Try worktrees too
+      for wt_compose in "$REPO_ROOT"/.claude/worktrees/*/docker-compose.yaml "$REPO_ROOT"/.claude/worktrees/*/docker-compose.yml; do
+        [[ -f "$wt_compose" ]] && docker compose -f "$wt_compose" down 2>/dev/null || true
+      done
+
+      # If containers still exist (running or stopped), remove them
+      for name in $running_on_ports; do
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${name}$"; then
+          echo "Removing container: $name"
+          docker rm -f "$name" 2>/dev/null || true
+        fi
+      done
+      echo "Containers stopped."
+    else
+      # Ports occupied by non-docker processes - try to identify them
+      echo "Required ports are in use by non-docker processes:"
+      for port in $PORTS; do
+        if lsof -i :"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+          echo "  Port $port: $(lsof -i :"$port" -sTCP:LISTEN -t 2>/dev/null | xargs ps -o comm= -p 2>/dev/null || echo 'unknown')"
+        fi
+      done
+      echo ""
+      read -rp "Kill these processes and continue? [y/N] " answer
+      if [[ "${answer}" =~ ^[Yy]$ ]]; then
+        for port in $PORTS; do
+          lsof -i :"$port" -sTCP:LISTEN -t 2>/dev/null | xargs kill 2>/dev/null || true
+        done
+        sleep 1
+        echo "Processes stopped."
+      else
+        echo "Aborting."
+        exit 1
+      fi
+    fi
+  fi
+fi
+
+# --- Copy .example files that are gitignored but required ---
+for example_file in $(find . -name '*.example.ts' -o -name '*.example.js' -o -name '*.example.json' 2>/dev/null); do
+  target_file="${example_file%.example.ts}.ts"
+  [[ "$example_file" == *.example.js ]] && target_file="${example_file%.example.js}.js"
+  [[ "$example_file" == *.example.json ]] && target_file="${example_file%.example.json}.json"
+  if [[ ! -f "$target_file" ]]; then
+    echo "Copying $(basename "$example_file") -> $(basename "$target_file")"
+    cp "$example_file" "$target_file"
+  fi
+done
+
+# --- Install deps if needed ---
+if [[ -f package.json ]] && [[ ! -d node_modules ]]; then
+  echo "Installing dependencies..."
+  $PKG_MANAGER install
+fi
+
+# --- Start docker compose ---
+if [[ "$has_compose" == "true" ]]; then
+  echo "Starting containers..."
+  docker compose up --build -d
+
+  # Wait for Grafana health if port 3000 is in use
+  if echo "$PORTS" | grep -q "3000"; then
+    echo "Waiting for Grafana..."
+    for i in $(seq 1 30); do
+      if curl -sf http://localhost:3000/api/health >/dev/null 2>&1; then
+        echo "Grafana is up at http://localhost:3000"
+        break
+      fi
+      if [[ $i -eq 30 ]]; then
+        echo "Warning: Grafana didn't respond after 30s, continuing anyway"
+      fi
+      sleep 1
+    done
+  fi
+fi
+
+# --- Start dev server ---
+if [[ -n "$DEV_CMD" ]]; then
+  echo ""
+  if [[ "$has_compose" == "true" ]]; then
+    echo "Press Ctrl+C to stop dev server (containers keep running; use 'docker compose down' in the worktree to stop)"
+  fi
+  echo ""
+  $PKG_MANAGER run "$DEV_CMD"
+else
+  echo "No dev script found in package.json. Containers are running - start your dev server manually."
+fi
