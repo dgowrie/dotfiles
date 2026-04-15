@@ -27,6 +27,16 @@ set -euo pipefail
 #   1. Add the file to the appropriate category directory (shell/, git/, etc.)
 #   2. Add a "source:destination" entry to the MANIFEST array below
 #   3. Run ./bootstrap.sh to verify, then ./bootstrap.sh --apply
+#
+# Emergency recovery (no PATH dependencies):
+#   If symlinks break (repo moved/deleted, corrupted checkout), restore the
+#   critical shell and git configs with absolute paths:
+#
+#   /bin/ln -sf ~/dev/dotfiles/shell/zshrc ~/.zshrc && \
+#   /bin/ln -sf ~/dev/dotfiles/shell/zprofile ~/.zprofile && \
+#   /bin/ln -sf ~/dev/dotfiles/git/gitconfig ~/.gitconfig
+#
+#   Then open a new shell and run ./bootstrap.sh --apply for the rest.
 
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 
