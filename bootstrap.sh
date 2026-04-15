@@ -3,9 +3,30 @@ set -euo pipefail
 
 # bootstrap.sh — symlink dotfiles into their expected locations
 #
-# Run from the dotfiles repo root:
-#   ./bootstrap.sh          # preview what will happen (dry run)
-#   ./bootstrap.sh --apply  # create symlinks
+# Usage:
+#   ./bootstrap.sh          dry run (default) - preview what would change
+#   ./bootstrap.sh --apply  create/update symlinks
+#   ./bootstrap.sh --help   show this help
+#
+# Behavior:
+#   - Dry run by default. Nothing changes without --apply.
+#   - Idempotent. Safe to re-run; existing correct symlinks show as OK.
+#   - Backs up existing files before replacing them with symlinks.
+#     Backups are saved alongside the original with a .backup.<timestamp> suffix.
+#   - Creates parent directories as needed.
+#   - Can be run from any directory (resolves its own location).
+#
+# Output states:
+#   OK       symlink already points to the correct source
+#   CREATE   no file at destination; symlink will be created
+#   REPLACE  regular file at destination; will be backed up, then symlinked
+#   RELINK   symlink exists but points elsewhere; will be updated
+#   MISSING  source file not found in repo (error)
+#
+# Adding a new dotfile:
+#   1. Add the file to the appropriate category directory (shell/, git/, etc.)
+#   2. Add a "source:destination" entry to the MANIFEST array below
+#   3. Run ./bootstrap.sh to verify, then ./bootstrap.sh --apply
 
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -16,10 +37,16 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
+# --- Help ---
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  sed -n '3,/^$/{ s/^# //; s/^#//; p; }' "$0"
+  exit 0
+fi
+
 # --- Symlink manifest ---
 # Format: "source:destination"
 # Source paths are relative to this repo root.
-# Destination paths use ~ (expanded at runtime).
+# Destination paths are absolute ($HOME is expanded at runtime).
 MANIFEST=(
   "shell/zshrc:$HOME/.zshrc"
   "shell/zprofile:$HOME/.zprofile"

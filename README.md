@@ -11,6 +11,35 @@ cd ~/dev/dotfiles
 ./bootstrap.sh --apply  # create symlinks
 ```
 
+## How bootstrap.sh works
+
+The bootstrap script is the central mechanism for linking repo files to their expected filesystem locations. It is also the manifest — the single source of truth for what goes where.
+
+**Key behaviors:**
+
+- **Dry run by default** — running without `--apply` previews all changes. Nothing is written.
+- **Idempotent** — safe to re-run at any time. Correct symlinks show `OK` and are skipped.
+- **Backs up before replacing** — existing regular files are copied to `<path>.backup.<timestamp>` before being replaced with a symlink.
+- **Creates parent directories** — missing intermediate dirs (e.g., `~/.config/git/`) are created automatically.
+- **Location-independent** — resolves its own path, so it works from any working directory.
+
+**Output states:**
+
+| State | Meaning |
+| --- | --- |
+| `OK` | Symlink already correct, no action needed |
+| `CREATE` | No file at destination, symlink will be created |
+| `REPLACE` | Regular file exists, will be backed up then symlinked |
+| `RELINK` | Symlink exists but points elsewhere, will be updated |
+| `MISSING` | Source file not found in repo (error) |
+
+**Adding a new dotfile:**
+
+1. Add the file to the appropriate category directory (`shell/`, `git/`, `gh/`, `scripts/`)
+2. Add a `"source:destination"` entry to the `MANIFEST` array in `bootstrap.sh`
+3. Run `./bootstrap.sh` to preview, then `./bootstrap.sh --apply`
+4. Update the "What's tracked" tables in this README
+
 ## Prerequisites
 
 Install these before running the bootstrap script:
