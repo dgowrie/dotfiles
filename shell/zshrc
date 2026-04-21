@@ -11,3 +11,9 @@ compinit
 # End of Docker CLI completions
 export PATH="$HOME/.local/bin:$PATH"
 
+# Claude Code defaults: opus 4.6 (1M context) + medium effort. Pass extra flags to override.
+claude() {
+  command claude --model 'claude-opus-4-6[1m]' --effort medium "$@"
+}
+alias claude-high='command claude --model "claude-opus-4-7[1m]" --effort xhigh'
+
