@@ -17,3 +17,13 @@ claude() {
 }
 alias claude-high='command claude --model "claude-opus-4-7[1m]" --effort xhigh'
 
+# prbatch [claude-args...] - launch Claude Code with a pinned window title.
+# Use for Agent View batches of autonomous PR code reviews: disables Claude
+# Code's own title management (CLAUDE_CODE_DISABLE_TERMINAL_TITLE) and pins
+# the title to "PR Code Reviews" so the window reflects the batch's purpose.
+# e.g. prbatch    or    prbatch --resume
+prbatch() {
+  export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
+  printf '\033]0;PR Code Reviews\007'
+  claude "$@"
+}
