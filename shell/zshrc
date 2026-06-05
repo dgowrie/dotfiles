@@ -11,9 +11,14 @@ compinit
 # End of Docker CLI completions
 export PATH="$HOME/.local/bin:$PATH"
 
-# Claude Code defaults: opus 4.6 (1M context) + medium effort. Pass extra flags to override.
+# Claude Code defaults: opus 4.8 (1M context) + medium effort. Pass extra flags to override.
 claude() {
-  command claude --model 'claude-opus-4-6[1m]' --effort medium "$@"
+  command claude --model 'claude-opus-4-8[1m]' --effort medium "$@"
 }
-alias claude-high='command claude --model "claude-opus-4-7[1m]" --effort xhigh'
+alias claude-high='command claude --model "claude-opus-4-8[1m]" --effort xhigh'
+# claude-cheap: opus 4.6 opt-in cost mode. 4.6's old tokenizer uses up to ~35% fewer
+# input tokens than 4.8 for the same fixed text - only worth it for high-volume,
+# single-shot, large-fixed-input, non-fast workloads. For bulk cost-sensitive work,
+# consider sonnet 4.6 ($3/$15) instead.
+alias claude-cheap='command claude --model "claude-opus-4-6[1m]" --effort medium'
 
