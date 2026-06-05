@@ -26,6 +26,10 @@ alias claude-cheap='command claude --model "claude-opus-4-6[1m]" --effort medium
 # cw chore/remove-grafanallm-dep
 # cw chore/remove-grafanallm-dep "947 remove grafana llm"
 cw() {
+  if [[ -z "$1" ]]; then
+    echo "usage: cw <branch> [session-name]" >&2
+    return 1
+  fi
   local args=(--worktree "$1")
   [[ -n "$2" ]] && args+=(-n "$2")
   claude "${args[@]}"
