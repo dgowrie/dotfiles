@@ -22,3 +22,15 @@ alias claude-high='command claude --model "claude-opus-4-8[1m]" --effort xhigh'
 # consider sonnet 4.6 ($3/$15) instead.
 alias claude-cheap='command claude --model "claude-opus-4-6[1m]" --effort medium'
 
+# cw <branch> [session-name] - start claude in a new worktree
+# cw chore/remove-grafanallm-dep
+# cw chore/remove-grafanallm-dep "947 remove grafana llm"
+cw() {
+  if [[ -z "$1" ]]; then
+    echo "usage: cw <branch> [session-name]" >&2
+    return 1
+  fi
+  local args=(--worktree "$1")
+  [[ -n "$2" ]] && args+=(-n "$2")
+  claude "${args[@]}"
+}
