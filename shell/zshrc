@@ -22,10 +22,18 @@ alias claude-high='command claude --model "claude-opus-4-8[1m]" --effort xhigh'
 # consider sonnet 4.6 ($3/$15) instead.
 alias claude-cheap='command claude --model "claude-opus-4-6[1m]" --effort medium'
 
-# prbatch [claude-args...] - launch Claude Code with a pinned window title.
-# Use for Agent View batches of autonomous PR code reviews: disables Claude
-# Code's own title management (CLAUDE_CODE_DISABLE_TERMINAL_TITLE) and pins
-# the title to "PR Code Reviews" so the window reflects the batch's purpose.
+# prbatch [claude-args...] - launch Claude Code in a tab pinned to the title
+# "PR Code Reviews". Intended for the tab that runs `claude agents` as the
+# control tower over a batch of autonomous PR-review sessions.
+#
+# Why pin manually: Claude auto-titles each tab with a rolling conversation
+# summary, so sibling Claude tabs drift and look alike. A fixed title keeps the
+# control-tower tab findable in the tab bar. CLAUDE_CODE_DISABLE_TERMINAL_TITLE
+# stops Claude from overwriting it. `-n` can't help here: `claude agents` has no
+# --name flag, so the manual escape sequence is the only way to label this tab.
+#
+# The Agent View is global (one shared supervisor); to see only one project's
+# sessions, scope the viewer: `claude agents --cwd <path>`.
 # e.g. prbatch    or    prbatch --resume
 prbatch() {
   export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
