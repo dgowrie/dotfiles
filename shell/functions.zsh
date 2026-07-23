@@ -14,6 +14,13 @@ alias claude-high='command claude --model "claude-opus-4-8[1m]" --effort xhigh'
 # consider sonnet 4.6 ($3/$15) instead.
 alias claude-cheap='command claude --model "claude-opus-4-6[1m]" --effort medium'
 
+# _set_terminal_title <title> - set the terminal tab title via an OSC escape
+# sequence, but only when stdout is a real terminal so the control bytes never
+# leak into pipes or logs. Shared by the launchers below.
+_set_terminal_title() {
+  [[ -t 1 ]] && printf '\033]0;%s\007' "$1"
+}
+
 # prbatch [claude-args...] - launch Claude Code in a tab pinned to the title
 # "PR Code Reviews". Intended for the tab that runs `claude agents` as the
 # control tower over a batch of autonomous PR-review sessions.
@@ -21,16 +28,17 @@ alias claude-cheap='command claude --model "claude-opus-4-6[1m]" --effort medium
 # Why pin manually: Claude auto-titles each tab with a rolling conversation
 # summary, so sibling Claude tabs drift and look alike. A fixed title keeps the
 # control-tower tab findable in the tab bar. CLAUDE_CODE_DISABLE_TERMINAL_TITLE
-# stops Claude from overwriting it. `-n` can't help here: `claude agents` has no
-# --name flag, so the manual escape sequence is the only way to label this tab.
+# stops Claude from overwriting it; it is scoped to the claude invocation so it
+# does not disable titles for later shell commands. `-n` can't help here: `claude
+# agents` has no --name flag, so the manual escape sequence is the only way to
+# label this tab.
 #
 # The Agent View is global (one shared supervisor); to see only one project's
 # sessions, scope the viewer: `claude agents --cwd <path>`.
 # e.g. prbatch    or    prbatch --resume
 prbatch() {
-  export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
-  printf '\033]0;PR Code Reviews\007'
-  claude "$@"
+  _set_terminal_title 'PR Code Reviews'
+  CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude "$@"
 }
 
 # cw <branch> [session-name] - start claude in a new worktree
@@ -42,11 +50,11 @@ cw() {
     return 1
   fi
   # Recent Claude Code versions overwrite the terminal tab title with a generic
-  # string, clobbering the worktree name that used to appear automatically.
-  # Suppress CC's title write and set the tab name ourselves (matches prbatch).
-  export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
-  printf '\033]0;%s\007' "${2:-$1}"
+  # string, clobbering the worktree name that used to appear automatically. Set
+  # the tab name ourselves and scope CLAUDE_CODE_DISABLE_TERMINAL_TITLE to the
+  # claude invocation so it doesn't disable titles for later shell commands.
+  _set_terminal_title "${2:-$1}"
   local args=(--worktree "$1")
   [[ -n "$2" ]] && args+=(-n "$2")
-  claude "${args[@]}"
+  CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude "${args[@]}"
 }
