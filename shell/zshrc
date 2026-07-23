@@ -50,11 +50,12 @@ cw() {
     return 1
   fi
   # Recent Claude Code versions overwrite the terminal tab title with a generic
-  # string, clobbering the worktree name that used to appear automatically.
-  # Suppress CC's title write and set the tab name ourselves (matches prbatch).
-  export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
-  printf '\033]0;%s\007' "${2:-$1}"
+  # string, clobbering the worktree name that used to appear automatically. Set
+  # the tab name ourselves (only when stdout is a TTY, so the escape sequence
+  # never leaks into pipes/logs) and scope CLAUDE_CODE_DISABLE_TERMINAL_TITLE to
+  # the claude invocation so it doesn't disable titles for later shell commands.
+  [[ -t 1 ]] && printf '\033]0;%s\007' "${2:-$1}"
   local args=(--worktree "$1")
   [[ -n "$2" ]] && args+=(-n "$2")
-  claude "${args[@]}"
+  CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude "${args[@]}"
 }
