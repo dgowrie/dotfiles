@@ -1,0 +1,23 @@
+name: shell
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install zsh
+        run: sudo apt-get update && sudo apt-get install -y zsh
+
+      - name: Syntax check
+        run: |
+          zsh -n shell/functions.zsh
+          zsh -n shell/zshrc
+
+      - name: Run function tests
+        run: zsh test/functions.test.zsh

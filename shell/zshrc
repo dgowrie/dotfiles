@@ -11,50 +11,9 @@ compinit
 # End of Docker CLI completions
 export PATH="$HOME/.local/bin:$PATH"
 
-# Claude Code defaults: opus 4.8 (1M context) + medium effort. Pass extra flags to override.
-claude() {
-  command claude --model 'claude-opus-4-8[1m]' --effort medium "$@"
-}
-alias claude-high='command claude --model "claude-opus-4-8[1m]" --effort xhigh'
-# claude-cheap: opus 4.6 opt-in cost mode. 4.6's old tokenizer uses up to ~35% fewer
-# input tokens than 4.8 for the same fixed text - only worth it for high-volume,
-# single-shot, large-fixed-input, non-fast workloads. For bulk cost-sensitive work,
-# consider sonnet 4.6 ($3/$15) instead.
-alias claude-cheap='command claude --model "claude-opus-4-6[1m]" --effort medium'
-
-# prbatch [claude-args...] - launch Claude Code in a tab pinned to the title
-# "PR Code Reviews". Intended for the tab that runs `claude agents` as the
-# control tower over a batch of autonomous PR-review sessions.
-#
-# Why pin manually: Claude auto-titles each tab with a rolling conversation
-# summary, so sibling Claude tabs drift and look alike. A fixed title keeps the
-# control-tower tab findable in the tab bar. CLAUDE_CODE_DISABLE_TERMINAL_TITLE
-# stops Claude from overwriting it. `-n` can't help here: `claude agents` has no
-# --name flag, so the manual escape sequence is the only way to label this tab.
-#
-# The Agent View is global (one shared supervisor); to see only one project's
-# sessions, scope the viewer: `claude agents --cwd <path>`.
-# e.g. prbatch    or    prbatch --resume
-prbatch() {
-  export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
-  printf '\033]0;PR Code Reviews\007'
-  claude "$@"
-}
-
-# cw <branch> [session-name] - start claude in a new worktree
-# cw chore/remove-grafanallm-dep
-# cw chore/remove-grafanallm-dep "947 remove grafana llm"
-cw() {
-  if [[ -z "$1" ]]; then
-    echo "usage: cw <branch> [session-name]" >&2
-    return 1
-  fi
-  # Recent Claude Code versions overwrite the terminal tab title with a generic
-  # string, clobbering the worktree name that used to appear automatically.
-  # Suppress CC's title write and set the tab name ourselves (matches prbatch).
-  export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
-  printf '\033]0;%s\007' "${2:-$1}"
-  local args=(--worktree "$1")
-  [[ -n "$2" ]] && args+=(-n "$2")
-  claude "${args[@]}"
-}
+# Shell functions and helpers (Claude Code wrappers, worktree launcher, etc.)
+# live in a sibling file so the test suite can source them in isolation.
+# ${(%):-%x} is this file's own path; :A resolves the ~/.zshrc symlink to the
+# repo copy, :h takes its directory - so functions.zsh loads regardless of where
+# the repo is checked out.
+source "${${(%):-%x}:A:h}/functions.zsh"
