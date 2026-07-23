@@ -17,7 +17,9 @@ script_dir="${${(%):-%x}:A:h}"
 functions_file="${script_dir:h}/shell/functions.zsh"
 
 typeset -g tests_run=0 tests_failed=0
-work="$(mktemp -d)"
+# Explicit template: portable across GNU and every BSD/macOS mktemp.
+work="$(mktemp -d "${TMPDIR:-/tmp}/functions-test.XXXXXX")"
+[[ -d "$work" ]] || { print -u2 -- "FATAL: could not create temp dir"; exit 1; }
 trap 'rm -rf "$work"' EXIT
 
 # --- tiny assertion helpers ---
@@ -32,6 +34,10 @@ assert_eq()       { [[ "$2" == "$3" ]] && pass "$1" || fail "$1" "$2" "$3"; }
 assert_contains() { [[ "$3" == *"$2"* ]] && pass "$1" || fail "$1" "*$2*" "$3"; }
 
 osc() { print -rn -- $'\033]0;'"$1"$'\007'; }  # expected title escape sequence
+# Render an argv as one line per argument, so assertions verify argument
+# boundaries (e.g. a session name with spaces stays a single argument) rather
+# than a space-joined blob where "a b" and "a" "b" look identical.
+argv() { print -rl -- "$@"; }
 
 # Load the real functions with a clean environment.
 load_real() { unset CLAUDE_CODE_DISABLE_TERMINAL_TITLE; source "$functions_file"; }
@@ -42,8 +48,8 @@ reset_env() {
   load_real
   _set_terminal_title() { print -rn -- $'\033]0;'"$1"$'\007'; }  # emit unconditionally
   claude() {
-    print -r -- "$*"                                     > "$work/claude_args"
-    print -r -- "${CLAUDE_CODE_DISABLE_TERMINAL_TITLE:-}" > "$work/claude_disable"
+    print -rl -- "$@"                                    > "$work/claude_args"
+    print -r  -- "${CLAUDE_CODE_DISABLE_TERMINAL_TITLE:-}" > "$work/claude_disable"
   }
 }
 
@@ -67,14 +73,14 @@ assert_contains  "no args prints usage to stderr" "usage: cw <branch>" "$(<$work
 reset_env
 cw "feat/foo" "my session" > "$work/out"
 assert_eq       "branch+name: title is session name" "$(osc 'my session')" "$(<$work/out)"
-assert_eq       "branch+name: args passed"           "--worktree feat/foo -n my session" "$(<$work/claude_args)"
+assert_eq       "branch+name: session name passed as one arg" "$(argv --worktree feat/foo -n 'my session')" "$(<$work/claude_args)"
 assert_eq       "branch+name: claude sees disable=1" "1" "$(<$work/claude_disable)"
 assert_eq       "branch+name: no leak to parent shell" "" "${CLAUDE_CODE_DISABLE_TERMINAL_TITLE:-}"
 
 reset_env
 cw "feat/bar" > "$work/out"
 assert_eq       "branch only: title falls back to branch" "$(osc 'feat/bar')" "$(<$work/out)"
-assert_eq       "branch only: no -n flag"                 "--worktree feat/bar" "$(<$work/claude_args)"
+assert_eq       "branch only: no -n flag"                 "$(argv --worktree feat/bar)" "$(<$work/claude_args)"
 
 # --- prbatch ---
 print -- "prbatch:"
@@ -82,7 +88,7 @@ print -- "prbatch:"
 reset_env
 prbatch --resume > "$work/out"
 assert_eq       "title pinned to PR Code Reviews" "$(osc 'PR Code Reviews')" "$(<$work/out)"
-assert_eq       "extra args passed through"       "--resume" "$(<$work/claude_args)"
+assert_eq       "extra args passed through"       "$(argv --resume)" "$(<$work/claude_args)"
 assert_eq       "claude sees disable=1"           "1" "$(<$work/claude_disable)"
 assert_eq       "no leak to parent shell"         "" "${CLAUDE_CODE_DISABLE_TERMINAL_TITLE:-}"
 
