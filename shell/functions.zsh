@@ -53,6 +53,12 @@ cw() {
   # string, clobbering the worktree name that used to appear automatically. Set
   # the tab name ourselves and scope CLAUDE_CODE_DISABLE_TERMINAL_TITLE to the
   # claude invocation so it doesn't disable titles for later shell commands.
+  #
+  # NOTE (VSCode): this only shows up in the tab if VSCode's user settings.json
+  # has "terminal.integrated.tabs.title": "${sequence}". The default is
+  # "${process}", which ignores this OSC title and instead renders the claude
+  # binary's basename (e.g. its version number). If worktree tabs regress to a
+  # version number, that setting was dropped.
   _set_terminal_title "${2:-$1}"
   local args=(--worktree "$1")
   [[ -n "$2" ]] && args+=(-n "$2")
