@@ -49,12 +49,14 @@ cw() {
     echo "usage: cw <branch> [session-name]" >&2
     return 1
   fi
-  # Recent Claude Code versions overwrite the terminal tab title with a generic
-  # string, clobbering the worktree name that used to appear automatically. Set
-  # the tab name ourselves and scope CLAUDE_CODE_DISABLE_TERMINAL_TITLE to the
-  # claude invocation so it doesn't disable titles for later shell commands.
-  _set_terminal_title "${2:-$1}"
-  local args=(--worktree "$1")
-  [[ -n "$2" ]] && args+=(-n "$2")
-  CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude "${args[@]}"
+  # Name the session after the worktree (or an explicit session name). Claude
+  # drives the terminal tab title from --name and keeps it in sync with /rename,
+  # so we let it own the title rather than pinning one with a printf escape +
+  # CLAUDE_CODE_DISABLE_TERMINAL_TITLE (which froze the tab and blocked /rename).
+  #
+  # NOTE (VSCode): the tab only shows this if settings.json has
+  # "terminal.integrated.tabs.title": "${sequence}". The default "${process}"
+  # ignores the OSC title and renders the claude binary basename (its version).
+  # If worktree tabs regress to a version number, that setting was dropped.
+  claude --worktree "$1" -n "${2:-$1}"
 }

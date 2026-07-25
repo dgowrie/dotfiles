@@ -72,15 +72,15 @@ assert_contains  "no args prints usage to stderr" "usage: cw <branch>" "$(<$work
 
 reset_env
 cw "feat/foo" "my session" > "$work/out"
-assert_eq       "branch+name: title is session name" "$(osc 'my session')" "$(<$work/out)"
+assert_eq       "branch+name: no title emitted (claude owns it)" "" "$(<$work/out)"
 assert_eq       "branch+name: session name passed as one arg" "$(argv --worktree feat/foo -n 'my session')" "$(<$work/claude_args)"
-assert_eq       "branch+name: claude sees disable=1" "1" "$(<$work/claude_disable)"
+assert_eq       "branch+name: does not disable claude's title" "" "$(<$work/claude_disable)"
 assert_eq       "branch+name: no leak to parent shell" "" "${CLAUDE_CODE_DISABLE_TERMINAL_TITLE:-}"
 
 reset_env
 cw "feat/bar" > "$work/out"
-assert_eq       "branch only: title falls back to branch" "$(osc 'feat/bar')" "$(<$work/out)"
-assert_eq       "branch only: no -n flag"                 "$(argv --worktree feat/bar)" "$(<$work/claude_args)"
+assert_eq       "branch only: no title emitted (claude owns it)" "" "$(<$work/out)"
+assert_eq       "branch only: name defaults to branch"    "$(argv --worktree feat/bar -n feat/bar)" "$(<$work/claude_args)"
 
 # --- prbatch ---
 print -- "prbatch:"
