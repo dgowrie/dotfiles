@@ -3,16 +3,14 @@
 # Sourced from zshrc; contains no interactive-only setup, so it is safe to load
 # in a non-interactive test shell with `claude` stubbed.
 
-# Claude Code defaults: opus 4.8 (1M context) + medium effort. Pass extra flags to override.
+# Claude Code defaults: opus 5.5 (1M context) + high effort. Pass extra flags to override.
 claude() {
-  command claude --model 'claude-opus-4-8[1m]' --effort medium "$@"
+  command claude --model 'claude-opus-5-5[1m]' --effort high "$@"
 }
-alias claude-high='command claude --model "claude-opus-4-8[1m]" --effort xhigh'
-# claude-cheap: opus 4.6 opt-in cost mode. 4.6's old tokenizer uses up to ~35% fewer
-# input tokens than 4.8 for the same fixed text - only worth it for high-volume,
-# single-shot, large-fixed-input, non-fast workloads. For bulk cost-sensitive work,
-# consider sonnet 4.6 ($3/$15) instead.
-alias claude-cheap='command claude --model "claude-opus-4-6[1m]" --effort medium'
+alias claude-high='command claude --model "claude-opus-5-5[1m]" --effort xhigh'
+# claude-cheap: opus 4.8 opt-in cost mode at medium effort, for high-volume or
+# cost-sensitive work where 5.5 is more than the task needs.
+alias claude-cheap='command claude --model "claude-opus-4-8[1m]" --effort medium'
 
 # _set_terminal_title <title> - set the terminal tab title via an OSC escape
 # sequence, but only when stdout is a real terminal so the control bytes never

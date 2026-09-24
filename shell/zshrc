@@ -21,8 +21,5 @@ source "${${(%):-%x}:A:h}/functions.zsh"
 # Go binaries (rice CLI, etc.)
 export PATH="$PATH:$(go env GOPATH)/bin"
 
-# Force Claude Code to launch at high effort regardless of per-model launch-effort defaults
-export CLAUDE_CODE_EFFORT_LEVEL=high
-
 # Tailscale CLI (App Store build): alias, not a PATH entry, so setup-context still takes its in-memory kubeconfig path
 alias tailscale="TAILSCALE_BE_CLI=1 /Applications/Tailscale.app/Contents/MacOS/Tailscale"

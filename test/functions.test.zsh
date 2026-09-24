@@ -92,6 +92,44 @@ assert_eq       "extra args passed through"       "$(argv --resume)" "$(<$work/c
 assert_eq       "claude sees disable=1"           "1" "$(<$work/claude_disable)"
 assert_eq       "no leak to parent shell"         "" "${CLAUDE_CODE_DISABLE_TERMINAL_TITLE:-}"
 
+# --- claude launchers ---
+# All three launchers invoke `command claude`, which bypasses shell functions
+# and aliases, so the reset_env `claude()` stub cannot observe them. Intercept
+# at the PATH level instead: a fake `claude` binary records the argv it was
+# given, one per line, so model/effort flags and forwarded args are all visible.
+print -- "claude launchers:"
+
+launcher_bin="$work/bin"
+mkdir -p "$launcher_bin"
+print -r -- '#!/bin/sh'                                                 > "$launcher_bin/claude"
+print -r -- 'for a in "$@"; do printf "%s\n" "$a"; done > "$FAKE_CLAUDE_ARGS"' >> "$launcher_bin/claude"
+chmod +x "$launcher_bin/claude"
+
+# Real functions + aliases (no claude() stub); fake claude first on PATH so
+# `command claude` resolves to it. Aliases are invoked via eval so alias
+# expansion happens at runtime, after functions.zsh has defined them.
+launcher_env() {
+  load_real
+  export FAKE_CLAUDE_ARGS="$work/launch_args"
+  rm -f "$FAKE_CLAUDE_ARGS"
+  path=("$launcher_bin" $path)
+}
+
+launcher_env
+claude one "two three" > "$work/out"
+assert_eq "claude: opus 5.5 [1m] at high, args forwarded" \
+  "$(argv --model 'claude-opus-5-5[1m]' --effort high one 'two three')" "$(<$work/launch_args)"
+
+launcher_env
+eval 'claude-high one "two three"' > "$work/out"
+assert_eq "claude-high: opus 5.5 [1m] at xhigh, args forwarded" \
+  "$(argv --model 'claude-opus-5-5[1m]' --effort xhigh one 'two three')" "$(<$work/launch_args)"
+
+launcher_env
+eval 'claude-cheap one "two three"' > "$work/out"
+assert_eq "claude-cheap: opus 4.8 [1m] at medium, args forwarded" \
+  "$(argv --model 'claude-opus-4-8[1m]' --effort medium one 'two three')" "$(<$work/launch_args)"
+
 # --- summary ---
 print -- ""
 print -- "$tests_run run, $tests_failed failed"
