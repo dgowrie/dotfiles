@@ -58,5 +58,6 @@ cw() {
   # "terminal.integrated.tabs.title": "${sequence}". The default "${process}"
   # ignores the OSC title and renders the claude binary basename (its version).
   # If worktree tabs regress to a version number, that setting was dropped.
+  # Bringing that setting under dotfiles management is tracked in #17.
   claude --worktree "$1" -n "${2:-$1}"
 }
