@@ -3,9 +3,11 @@
 # Sourced from zshrc; contains no interactive-only setup, so it is safe to load
 # in a non-interactive test shell with `claude` stubbed.
 
-# Claude Code defaults: opus 5.5 (1M context) + high effort. Pass extra flags to override.
+# Claude Code defaults: opus 5.5 (1M context). Pass extra flags to override.
+# No --effort here: the flag pins effort for the whole session (in-session
+# /effort is refused), and settings.json effortLevel already defaults to high.
 claude() {
-  command claude --model 'claude-opus-5-5[1m]' --effort high "$@"
+  command claude --model 'claude-opus-5-5[1m]' "$@"
 }
 alias claude-high='command claude --model "claude-opus-5-5[1m]" --effort xhigh'
 # claude-cheap: opus 4.8 opt-in cost mode at medium effort, for high-volume or
