@@ -117,8 +117,8 @@ launcher_env() {
 
 launcher_env
 claude one "two three" > "$work/out"
-assert_eq "claude: opus 5.5 [1m] at high, args forwarded" \
-  "$(argv --model 'claude-opus-5-5[1m]' --effort high one 'two three')" "$(<$work/launch_args)"
+assert_eq "claude: opus 5.5 [1m], no --effort (keeps /effort usable), args forwarded" \
+  "$(argv --model 'claude-opus-5-5[1m]' one 'two three')" "$(<$work/launch_args)"
 
 launcher_env
 eval 'claude-high one "two three"' > "$work/out"
@@ -131,13 +131,13 @@ assert_eq "claude-cheap: opus 4.8 [1m] at medium, args forwarded" \
   "$(argv --model 'claude-opus-4-8[1m]' --effort medium one 'two three')" "$(<$work/launch_args)"
 
 # cw calls bare `claude` (the launcher function), not `command claude`, so a
-# real invocation inherits the default model/effort. The cw section above uses
+# real invocation inherits the default model. The cw section above uses
 # the reset_env stub and cannot see that; assert the full chain here against the
-# real launcher: model/effort prepended, then cw's own --worktree/-n arguments.
+# real launcher: model prepended, then cw's own --worktree/-n arguments.
 launcher_env
 cw feat/foo "my session" > "$work/out"
-assert_eq "cw: passes through the real claude launcher (opus 5.5 [1m] at high) then worktree+name" \
-  "$(argv --model 'claude-opus-5-5[1m]' --effort high --worktree feat/foo -n 'my session')" "$(<$work/launch_args)"
+assert_eq "cw: passes through the real claude launcher (opus 5.5 [1m]) then worktree+name" \
+  "$(argv --model 'claude-opus-5-5[1m]' --worktree feat/foo -n 'my session')" "$(<$work/launch_args)"
 
 # --- summary ---
 print -- ""
